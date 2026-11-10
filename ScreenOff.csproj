@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+
+    <!-- 产物文件名即发布文件名，保持英文：ScreenOff.exe -->
+    <AssemblyName>ScreenOff</AssemblyName>
+    <RootNamespace>ScreenOffTool</RootNamespace>
+    <Product>ScreenOff</Product>
+    <AssemblyTitle>ScreenOff</AssemblyTitle>
+    <Description>锁屏并关闭显示器，后台任务照常运行 / Lock the screen and turn the monitor off while background tasks keep running</Description>
+    <Copyright>Copyright (C) 2026 junmoxiao-6</Copyright>
+    <Version>1.5.0</Version>
+    <FileVersion>1.5.0.0</FileVersion>
+
+    <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>
