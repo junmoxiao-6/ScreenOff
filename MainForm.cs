@@ -122,13 +122,15 @@ namespace ScreenOffTool
             }
 
             // 月牙：外圆减去一个略大的偏移圆（布尔差集，几何精确）
+            // 月牙天然偏左，整体右移一点让视觉重心落在圆心
             float r = R * 0.60f;
+            float mx = cx + r * 0.14f;
             using (GraphicsPath outer = new GraphicsPath())
             {
-                outer.AddEllipse(cx - r, cy - r, r * 2f, r * 2f);
+                outer.AddEllipse(mx - r, cy - r, r * 2f, r * 2f);
 
                 float cutR = r * 1.25f;
-                float cutCx = cx + r * 0.52f;
+                float cutCx = mx + r * 0.52f;
                 float cutCy = cy - r * 0.22f;
 
                 using (GraphicsPath cut = new GraphicsPath())
@@ -138,7 +140,7 @@ namespace ScreenOffTool
                     {
                         reg.Exclude(cut);
                         using (LinearGradientBrush lb = new LinearGradientBrush(
-                            new RectangleF(cx - r, cy - r, r * 2f, r * 2f),
+                            new RectangleF(mx - r, cy - r, r * 2f, r * 2f),
                             Color.FromArgb(255, 255, 255),
                             Color.FromArgb(158, 200, 255),
                             55f))
