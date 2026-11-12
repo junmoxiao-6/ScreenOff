@@ -693,13 +693,20 @@ namespace ScreenOffTool
         private readonly System.Collections.Generic.List<int> _hotkeyIds = new System.Collections.Generic.List<int>();
         private readonly System.Collections.Generic.List<string> _activeHotkeys = new System.Collections.Generic.List<string>();
 
+        private MainForm _panel;
+        private readonly Control _marshal;
+        private readonly EventWaitHandle _showEvent;
+        private bool _exiting;
+
+        public const string ShowEventName = "Global\\ScreenOffShowPanel-9F2A17";
+
         // 主键被占用时的退路。平时只用主键，不额外抢占别的组合。
         private static readonly string[] BackupHotkeys = new string[]
         {
             "Ctrl+Alt+F9", "Ctrl+Alt+F8"
         };
 
-        public TrayApp(AppConfig cfg)
+        public TrayApp(AppConfig cfg, bool showPanel)
         {
             _cfg = cfg;
 
@@ -708,6 +715,7 @@ namespace ScreenOffTool
 
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Font = new Font("Microsoft YaHei UI", 9f);
+            menu.Items.Add(new ToolStripMenuItem("显示主面板", null, delegate { ShowPanel(); }));
             menu.Items.Add(_doItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(new ToolStripMenuItem("设置…", null, delegate { OpenSettings(); }));
@@ -723,7 +731,26 @@ namespace ScreenOffTool
             _icon.Text = "一键息屏";
             _icon.ContextMenuStrip = menu;
             _icon.Visible = true;
-            _icon.DoubleClick += delegate { RunNow(); };
+            _icon.DoubleClick += delegate { ShowPanel(); };
+
+            // 用于把「显示面板」请求从后台线程切到 UI 线程
+            _marshal = new Control();
+            IntPtr force = _marshal.Handle;
+
+            // 第二个实例启动时，通过命名事件通知这里弹出面板
+            _showEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowEventName);
+            Thread watcher = new Thread(delegate ()
+            {
+                while (true)
+                {
+                    _showEvent.WaitOne();
+                    if (_exiting) return;
+                    try { _marshal.BeginInvoke((MethodInvoker)delegate { ShowPanel(); }); }
+                    catch { }
+                }
+            });
+            watcher.IsBackground = true;
+            watcher.Start();
 
             _sink = new HotkeyWindow();
             _sink.HotkeyPressed += delegate (int id)
@@ -732,6 +759,11 @@ namespace ScreenOffTool
             };
 
             ApplyHotkey();
+
+            if (showPanel)
+            {
+                ShowPanel();
+            }
 
             if (_cfg.ShowFirstRunTip)
             {
@@ -764,6 +796,33 @@ namespace ScreenOffTool
                           + " 延时=" + _cfg.DelayMs
                           + " DDC=" + _cfg.DdcFallback);
             }
+        }
+
+        public void ShowPanel()
+        {
+            if (_exiting) return;
+
+            if (_panel == null || _panel.IsDisposed)
+            {
+                _panel = new MainForm(_cfg, RunNow, delegate
+                {
+                    ApplyHotkey();
+                    RefreshPanelHotkey();
+                });
+                _panel.HotkeyProvider = delegate { return PrimaryHotkey; };
+            }
+
+            _panel.RefreshSettings();
+            _panel.Show();
+            if (_panel.WindowState == FormWindowState.Minimized)
+                _panel.WindowState = FormWindowState.Normal;
+            _panel.BringToFront();
+            _panel.Activate();
+        }
+
+        private void RefreshPanelHotkey()
+        {
+            if (_panel != null && !_panel.IsDisposed) _panel.RefreshHotkey();
         }
 
         private void RunNow()
@@ -849,6 +908,7 @@ namespace ScreenOffTool
 
             _doItem.Text = (_cfg.LockBeforeOff ? "立即锁屏并熄屏" : "立即熄屏") + "\t" + PrimaryHotkey;
             try { _icon.Text = "一键息屏 · " + PrimaryHotkey; } catch { }
+            RefreshPanelHotkey();
 
             if (_activeHotkeys.Count == 0)
             {
@@ -908,7 +968,7 @@ namespace ScreenOffTool
         {
             string list = _activeHotkeys.Count > 0 ? string.Join(" / ", _activeHotkeys.ToArray()) : "（无）";
             MessageBox.Show(
-                "ScreenOff 1.5 · 一键息屏\n\n" +
+                "ScreenOff 1.6 · 一键息屏\n\n" +
                 "当前流程：" + (_cfg.LockBeforeOff ? "先锁屏 → 再熄屏" : "只熄屏（不锁屏）") + "\n" +
                 (_cfg.LockBeforeOff
                     ? "锁屏后切到安全桌面，后台程序的「保持显示器开启」压不住熄屏；\n回来时动一下鼠标键盘点亮屏幕，输入密码解锁。\n\n"
@@ -924,9 +984,18 @@ namespace ScreenOffTool
 
         private void ExitApp()
         {
+            _exiting = true;
             foreach (int id in _hotkeyIds) Native.UnregisterHotKey(_sink.Handle, id);
             _hotkeyIds.Clear();
             Log.Write("退出托盘");
+
+            if (_panel != null && !_panel.IsDisposed)
+            {
+                _panel.Hide();
+                _panel.Dispose();
+            }
+
+            try { _showEvent.Close(); } catch { }
             _icon.Visible = false;
             _icon.Dispose();
             ExitThread();
@@ -944,24 +1013,52 @@ namespace ScreenOffTool
             Application.SetCompatibleTextRenderingDefault(false);
             try { Application.SetHighDpiMode(HighDpiMode.PerMonitorV2); } catch { }
 
-            // 首次运行 = 配置文件还不存在。此时双击 exe 应该「出现托盘 + 提示」，
-            // 而不是毫无征兆地黑屏；从第二次开始，双击即立即熄屏。
-            bool firstRun = !File.Exists(AppConfig.FilePathForDisplay);
+            Application.ThreadException += delegate (object s, System.Threading.ThreadExceptionEventArgs e)
+            {
+                Log.Write("UI 线程异常：" + e.Exception);
+            };
+            AppDomain.CurrentDomain.UnhandledException += delegate (object s, UnhandledExceptionEventArgs e)
+            {
+                Log.Write("未捕获异常：" + e.ExceptionObject);
+            };
 
+            try
+            {
+                Run(args);
+            }
+            catch (Exception ex)
+            {
+                Log.Write("启动失败：" + ex);
+                MessageBox.Show("启动失败：" + ex.Message, "ScreenOff",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private static void Run(string[] args)
+        {
             AppConfig cfg = AppConfig.Load();
 
-            // --uicheck：自检设置窗口能否正常构建（不驻留、不熄屏）
+            // --uicheck：自检主面板能否正常构建（不驻留、不熄屏）
             if (args.Any(a => string.Equals(a, "--uicheck", StringComparison.OrdinalIgnoreCase)))
             {
                 try
                 {
-                    using (SettingsForm f = new SettingsForm(cfg))
+                    using (MainForm f = new MainForm(cfg, delegate { }, delegate { }))
                     {
                         f.Show();
                         Application.DoEvents();
-                        Log.Write("UI 自检：设置窗口创建成功 " + f.Width + "x" + f.Height
+                        Log.Write("UI 自检：主面板创建成功 " + f.Width + "x" + f.Height
                                   + "，控件数=" + f.Controls.Count);
                         f.Close();
+                    }
+
+                    using (SettingsForm s = new SettingsForm(cfg))
+                    {
+                        s.Show();
+                        Application.DoEvents();
+                        Log.Write("UI 自检：设置窗口创建成功 " + s.Width + "x" + s.Height
+                                  + "，控件数=" + s.Controls.Count);
+                        s.Close();
                     }
                     Log.Write("UI 自检：通过");
                 }
@@ -1000,33 +1097,32 @@ namespace ScreenOffTool
                 return;
             }
 
-            bool tray = args.Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase));
+            // --tray：只驻留托盘，不弹面板。无参数：弹出主面板。
+            bool trayOnly = args.Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase));
 
-            if (!tray && firstRun)
-            {
-                // 首次启动：进入托盘并给出提示，让用户先知道快捷键是什么
-                tray = true;
-                Log.Write("首次运行，进入托盘模式");
-            }
-
-            if (!tray)
-            {
-                // 双击即熄屏：不驻留、不留窗口
-                Log.Write("熄屏（双击模式）");
-                ScreenController.TurnOffAndGuard(cfg);
-                return;
-            }
-
-            // 托盘模式保持单实例，重复启动时只执行一次熄屏
             bool createdNew;
             using (Mutex mutex = new Mutex(true, "Global\\ScreenOffTray-9F2A17", out createdNew))
             {
                 if (!createdNew)
                 {
-                    ScreenController.TurnOffAndGuard(cfg);
+                    // 已经在跑了：通知那个实例把面板弹出来，然后本次退出
+                    try
+                    {
+                        using (EventWaitHandle ev = EventWaitHandle.OpenExisting(TrayApp.ShowEventName))
+                        {
+                            ev.Set();
+                        }
+                        Log.Write("已有实例在运行，已请求其显示主面板");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Write("唤醒已有实例失败：" + ex.Message);
+                    }
                     return;
                 }
-                Application.Run(new TrayApp(cfg));
+
+                Log.Write(trayOnly ? "启动（仅托盘）" : "启动（主面板）");
+                Application.Run(new TrayApp(cfg, !trayOnly));
             }
         }
     }

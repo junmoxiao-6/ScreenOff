@@ -15,8 +15,8 @@
     <AssemblyTitle>ScreenOff</AssemblyTitle>
     <Description>锁屏并关闭显示器，后台任务照常运行 / Lock the screen and turn the monitor off while background tasks keep running</Description>
     <Copyright>Copyright (C) 2026 junmoxiao-6</Copyright>
-    <Version>1.5.0</Version>
-    <FileVersion>1.5.0.0</FileVersion>
+    <Version>1.6.0</Version>
+    <FileVersion>1.6.0.0</FileVersion>
 
     <SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
     <ApplicationIcon>app.ico</ApplicationIcon>
