@@ -816,9 +816,14 @@ namespace ScreenOffTool
             _panel.Show();
             if (_panel.WindowState == FormWindowState.Minimized)
                 _panel.WindowState = FormWindowState.Normal;
+
             _panel.BringToFront();
             _panel.Activate();
+            try { SetForegroundWindow(_panel.Handle); } catch { }
         }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
 
         private void RefreshPanelHotkey()
         {
@@ -1100,30 +1105,68 @@ namespace ScreenOffTool
             // --tray：只驻留托盘，不弹面板。无参数：弹出主面板。
             bool trayOnly = args.Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase));
 
+            const string mutexName = "Global\\ScreenOffTray-9F2A17";
             bool createdNew;
-            using (Mutex mutex = new Mutex(true, "Global\\ScreenOffTray-9F2A17", out createdNew))
+            Mutex mutex = new Mutex(true, mutexName, out createdNew);
+
+            if (!createdNew)
             {
-                if (!createdNew)
+                // 已有实例：请它把面板弹出来。若它正好在退出（互斥量未释放、事件已关闭），
+                // 就稍等重试接管，避免用户双击后毫无反应。
+                bool handedOver = false;
+                for (int i = 0; i < 20; i++)
                 {
-                    // 已经在跑了：通知那个实例把面板弹出来，然后本次退出
-                    try
+                    if (SignalShowPanel())
                     {
-                        using (EventWaitHandle ev = EventWaitHandle.OpenExisting(TrayApp.ShowEventName))
-                        {
-                            ev.Set();
-                        }
-                        Log.Write("已有实例在运行，已请求其显示主面板");
+                        handedOver = true;
+                        break;
                     }
-                    catch (Exception ex)
+
+                    Thread.Sleep(150);
+
+                    bool nowNew;
+                    mutex.Dispose();
+                    mutex = new Mutex(true, mutexName, out nowNew);
+                    if (nowNew)
                     {
-                        Log.Write("唤醒已有实例失败：" + ex.Message);
+                        createdNew = true;
+                        Log.Write("旧实例已退出，由本次启动接管");
+                        break;
                     }
-                    return;
                 }
 
-                Log.Write(trayOnly ? "启动（仅托盘）" : "启动（主面板）");
+                if (handedOver || !createdNew)
+                {
+                    mutex.Dispose();
+                    return;
+                }
+            }
+
+            Log.Write(trayOnly ? "启动（仅托盘）" : "启动（主面板）");
+            try
+            {
                 Application.Run(new TrayApp(cfg, !trayOnly));
             }
+            finally
+            {
+                try { mutex.ReleaseMutex(); } catch { }
+                mutex.Dispose();
+            }
+        }
+
+        /// <summary>通知已在运行的实例显示主面板。成功返回 true。</summary>
+        private static bool SignalShowPanel()
+        {
+            try
+            {
+                using (EventWaitHandle ev = EventWaitHandle.OpenExisting(TrayApp.ShowEventName))
+                {
+                    ev.Set();
+                }
+                Log.Write("已有实例在运行，已请求其显示主面板");
+                return true;
+            }
+            catch { return false; }
         }
     }
 }

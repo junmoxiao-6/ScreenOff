@@ -82,67 +82,40 @@ namespace ScreenOffTool
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.Clear(Parent != null ? Parent.BackColor : Color.FromArgb(11, 16, 32));
 
+            // 只画一个月牙，不要底盘、不要描边圆
             int size = Math.Min(Width, Height);
             float cx = Width / 2f;
             float cy = Height / 2f;
-            float R = size / 2f - 14f;
-            if (_pressed) R -= 3f;
 
-            // 外扩光晕
-            for (int i = 4; i >= 1; i--)
-            {
-                float rr = R + i * (6f + 5f * _glow);
-                int alpha = (int)((4 + 8 * _glow) * (5 - i) / 4f * 3);
-                if (alpha <= 0) continue;
-                using (SolidBrush b = new SolidBrush(Color.FromArgb(Math.Min(alpha, 55), 110, 150, 255)))
-                {
-                    g.FillEllipse(b, cx - rr, cy - rr, rr * 2, rr * 2);
-                }
-            }
+            float r = size * 0.33f;
+            if (_pressed) r *= 0.93f;
+            else if (_hover) r *= 1.04f;
 
-            // 盘面
-            RectangleF disc = new RectangleF(cx - R, cy - R, R * 2, R * 2);
-            using (GraphicsPath path = new GraphicsPath())
-            {
-                path.AddEllipse(disc);
-                using (PathGradientBrush pg = new PathGradientBrush(path))
-                {
-                    pg.CenterPoint = new PointF(cx, cy - R * 0.18f);
-                    pg.CenterColor = Color.FromArgb(58, 82, 140);
-                    pg.SurroundColors = new Color[] { Color.FromArgb(13, 19, 36) };
-                    g.FillPath(pg, path);
-                }
-            }
+            // 月牙天然偏左，整体右移一点让视觉重心落在中心
+            float mx = cx + r * 0.18f;
 
-            // 描边
-            int ringA = 55 + (int)(90 * _glow);
-            using (Pen pen = new Pen(Color.FromArgb(ringA, 135, 170, 255), 1.2f))
-            {
-                g.DrawEllipse(pen, disc);
-            }
+            float cutR = r * 1.25f;
+            float cutCx = mx + r * 0.52f;
+            float cutCy = cy - r * 0.22f;
 
-            // 月牙：外圆减去一个略大的偏移圆（布尔差集，几何精确）
-            // 月牙天然偏左，整体右移一点让视觉重心落在圆心
-            float r = R * 0.60f;
-            float mx = cx + r * 0.14f;
             using (GraphicsPath outer = new GraphicsPath())
             {
                 outer.AddEllipse(mx - r, cy - r, r * 2f, r * 2f);
 
-                float cutR = r * 1.25f;
-                float cutCx = mx + r * 0.52f;
-                float cutCy = cy - r * 0.22f;
-
                 using (GraphicsPath cut = new GraphicsPath())
                 {
                     cut.AddEllipse(cutCx - cutR, cutCy - cutR, cutR * 2f, cutR * 2f);
+
                     using (Region reg = new Region(outer))
                     {
                         reg.Exclude(cut);
+
+                        // 悬停/按下时略微提亮
+                        int b = (int)(232 + 23 * _glow);
                         using (LinearGradientBrush lb = new LinearGradientBrush(
                             new RectangleF(mx - r, cy - r, r * 2f, r * 2f),
                             Color.FromArgb(255, 255, 255),
-                            Color.FromArgb(158, 200, 255),
+                            Color.FromArgb(b, Math.Min(255, b + 6), 255),
                             55f))
                         {
                             g.FillRegion(lb, reg);
@@ -307,7 +280,7 @@ namespace ScreenOffTool
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(400, 596);
             BackColor = Color.FromArgb(11, 16, 32);
-            ShowInTaskbar = false;
+            ShowInTaskbar = true;
             DoubleBuffered = true;
             KeyPreview = true;
             Font = new Font("Microsoft YaHei UI", 9.5f);
