@@ -368,12 +368,23 @@ namespace ScreenOffTool
 
                 // 锁屏动画期间系统会点亮一次屏，等它落定再熄
                 Thread.Sleep(520);
+                TurnOff(cfg);
+
+                // 锁屏之后不再干预。
+                // 原因：锁屏后键鼠输入发生在安全桌面，本进程看到的 GetLastInputInfo 不会更新，
+                // 守护线程会误判成「无人操作、屏幕自己亮了」而反复压黑，
+                // 表现就是用户点鼠标时屏幕闪一下又黑，永远唤不醒。
+                // 锁屏本身已经能挡住后台程序的「保持点亮」请求，这里交还给用户即可。
+                Log.Write("熄屏完成（锁屏模式，不干预唤醒）");
+                return;
             }
+
+            // 不锁屏：键鼠输入能正常被本进程看到，可以安全守护。
 
             uint input = LastInputTick();
             TurnOff(cfg);
 
-            DateTime deadline = DateTime.UtcNow.AddHours(8);
+            DateTime deadline = DateTime.UtcNow.AddMinutes(30);
             DateTime started = DateTime.UtcNow;
             int reforced = 0;
 
@@ -392,9 +403,8 @@ namespace ScreenOffTool
                 if (!IsDisplayOn()) continue;
 
                 // 防抖：屏幕刚亮很可能是「系统正在处理这次输入」，
-                // 再等 200ms 复核一次，确认用户确实没有输入才压回去，
-                // 否则会和用户的唤醒动作打架，表现为屏幕一闪一闪。
-                Thread.Sleep(200);
+                // 再等 250ms 复核一次，确认用户确实有输入才让路
+                Thread.Sleep(250);
                 if (InputChanged(input))
                 {
                     Log.Write("检测到用户输入（防抖复核），守护结束（期间重新熄屏 " + reforced + " 次）");
@@ -405,9 +415,15 @@ namespace ScreenOffTool
                 reforced++;
                 Log.Write("屏幕被点亮且无人操作，重新熄屏（累计 " + reforced + " 次）");
                 SendMonitorOffFast();
+
+                if (reforced >= 5)
+                {
+                    Log.Write("已连续压回 5 次，停止守护以免与用户操作打架");
+                    return;
+                }
             }
 
-            Log.Write("守护达到 8 小时上限，自动退出");
+            Log.Write("守护达到 30 分钟上限，自动退出");
         }
 
         private static bool InputChanged(uint baseline)

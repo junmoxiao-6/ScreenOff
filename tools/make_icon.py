@@ -54,7 +54,7 @@ def dib(S):
     return header + bytes(xor) + bytes(mask)
 
 
-def build(path, sizes=(16, 24, 32, 48, 64, 128, 256)):
+def build(path, sizes=(16, 20, 24, 32, 40, 48, 64, 128, 256)):
     images = [dib(s) for s in sizes]
     head = struct.pack('<HHH', 0, 1, len(sizes))
     offset = 6 + 16 * len(sizes)
