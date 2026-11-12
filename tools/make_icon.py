@@ -54,7 +54,7 @@ def dib(S):
     return header + bytes(xor) + bytes(mask)
 
 
-def build(path, sizes=(16, 32, 48, 64, 128)):
+def build(path, sizes=(16, 24, 32, 48, 64, 128, 256)):
     images = [dib(s) for s in sizes]
     head = struct.pack('<HHH', 0, 1, len(sizes))
     offset = 6 + 16 * len(sizes)
@@ -70,6 +70,6 @@ def build(path, sizes=(16, 32, 48, 64, 128)):
 
 
 if __name__ == '__main__':
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'app.ico')
+    out = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app.ico')
     size, n = build(out)
     print('written:', out, size, 'bytes,', n, 'sizes')

@@ -566,22 +566,49 @@ namespace ScreenOffTool
     // ─────────────────────────── 图标 ───────────────────────────
     internal static class Icons
     {
+        private static Icon _tray;
+        private static Icon _window;
+
+        /// <summary>托盘图标：按当前 DPI 的小图标尺寸，从 app.ico 里取最接近的那一帧。</summary>
         public static Icon Create()
         {
-            Bitmap bmp = new Bitmap(32, 32);
-            using (Graphics g = Graphics.FromImage(bmp))
+            if (_tray != null) return _tray;
+
+            Size want = SystemInformation.SmallIconSize;
+            _tray = Load(want.Width, want.Height);
+            return _tray;
+        }
+
+        /// <summary>窗口/任务栏图标：取 48 像素帧，缩小比放大清晰。</summary>
+        public static Icon CreateWindowIcon()
+        {
+            if (_window != null) return _window;
+            _window = Load(48, 48);
+            return _window;
+        }
+
+        private static Icon Load(int w, int h)
+        {
+            try
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.Clear(Color.Transparent);
-
-                Color bg = Color.FromArgb(38, 44, 56);
-                Color fg = Color.FromArgb(240, 244, 250);
-
-                using (SolidBrush b = new SolidBrush(bg)) g.FillEllipse(b, 1, 1, 30, 30);
-                using (SolidBrush b = new SolidBrush(fg)) g.FillEllipse(b, 9, 6, 17, 17);
-                using (SolidBrush b = new SolidBrush(bg)) g.FillEllipse(b, 16, 3, 15, 15);
+                using (Stream s = typeof(Icons).Assembly.GetManifestResourceStream("app.ico"))
+                {
+                    if (s != null)
+                    {
+                        // 多尺寸 ico：.NET 会挑最接近的一帧，完全匹配时原样使用
+                        Icon ic = new Icon(s, new Size(w, h));
+                        Log.Write("图标载入：" + w + "x" + h + " 请求 → 实际 " + ic.Width + "x" + ic.Height);
+                        return ic;
+                    }
+                    Log.Write("图标资源 app.ico 未找到，改用系统默认图标");
+                }
             }
-            return Icon.FromHandle(bmp.GetHicon());
+            catch (Exception ex)
+            {
+                Log.Write("载入图标失败：" + ex.Message);
+            }
+
+            return SystemIcons.Application;
         }
     }
 

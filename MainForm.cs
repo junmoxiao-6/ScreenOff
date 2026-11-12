@@ -78,20 +78,42 @@ namespace ScreenOffTool
         protected override void OnPaint(PaintEventArgs e)
         {
             Graphics g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.Clear(Parent != null ? Parent.BackColor : Color.FromArgb(11, 16, 32));
 
-            // 只画一个月牙，不要底盘、不要描边圆
-            int size = Math.Min(Width, Height);
-            float cx = Width / 2f;
-            float cy = Height / 2f;
+            // 3 倍超采样：先放大画，再高质量缩回来，边缘才够锐利
+            const int ss = 3;
+            int bw = Math.Max(1, Width * ss);
+            int bh = Math.Max(1, Height * ss);
+
+            using (Bitmap big = new Bitmap(bw, bh, System.Drawing.Imaging.PixelFormat.Format32bppPArgb))
+            {
+                using (Graphics gb = Graphics.FromImage(big))
+                {
+                    gb.SmoothingMode = SmoothingMode.AntiAlias;
+                    gb.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    gb.Clear(Color.Transparent);
+                    DrawCrescent(gb, ss);
+                }
+
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.SmoothingMode = SmoothingMode.None;
+                g.DrawImage(big, new Rectangle(0, 0, Width, Height),
+                    0, 0, big.Width, big.Height, GraphicsUnit.Pixel);
+            }
+        }
+
+        private void DrawCrescent(Graphics g, float k)
+        {
+            float size = Math.Min(Width, Height) * k;
+            float cx = Width / 2f * k;
+            float cy = Height / 2f * k;
 
             float r = size * 0.33f;
             if (_pressed) r *= 0.93f;
             else if (_hover) r *= 1.04f;
 
-            // 月牙天然偏左，整体右移一点让视觉重心落在中心
+            // 月牙天然偏左，整体右移让视觉重心落在中心
             float mx = cx + r * 0.18f;
 
             float cutR = r * 1.25f;
@@ -110,7 +132,6 @@ namespace ScreenOffTool
                     {
                         reg.Exclude(cut);
 
-                        // 悬停/按下时略微提亮
                         int b = (int)(232 + 23 * _glow);
                         using (LinearGradientBrush lb = new LinearGradientBrush(
                             new RectangleF(mx - r, cy - r, r * 2f, r * 2f),
@@ -276,6 +297,7 @@ namespace ScreenOffTool
             _changed = changed;
 
             Text = "ScreenOff";
+            Icon = Icons.CreateWindowIcon();
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.CenterScreen;
             ClientSize = new Size(400, 596);

@@ -24,4 +24,9 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
+  <!-- 同一份 ico 既写进 exe 的资源，也作为托管资源供托盘/窗口按 DPI 取帧 -->
+  <ItemGroup>
+    <EmbeddedResource Include="app.ico" LogicalName="app.ico" />
+  </ItemGroup>
+
 </Project>
